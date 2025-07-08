@@ -20,6 +20,12 @@ extern "C" {
 #include <ace/utils/extview.h>
 #include <ace/managers/sprite.h>
 
+typedef struct tSubMultiplexedSprite {
+    WORD wX; ///< X position, measured from the left of the view.
+    WORD wY; ///< Y position, measured from the top of the view.
+    UWORD uwAnimFrame;
+} tSubMultiplexedSprite;
+
 typedef struct tAdvancedSprite {
     tSprite **pSprites;
     UBYTE ubSpriteCount;
@@ -35,6 +41,9 @@ typedef struct tAdvancedSprite {
     UBYTE isEnabled;
     UBYTE isHeaderToBeUpdated;
     UBYTE is4PP; // 16-color sprites only.
+    UBYTE isMultiplexed;
+    tSubMultiplexedSprite **pMultiplexedSprites;
+
 } tAdvancedSprite;
 
 /**
@@ -48,11 +57,13 @@ typedef struct tAdvancedSprite {
  * documentation for relevant constraints.
  * @param pSpriteVerticalStripBitmap Bitmap vertical strip to be used to display sprite and it's animation. Bitmap width is the target sprite width (16px or 32px).
  * @param uwSpriteHeight Height of the sprite.
+ * @param multiplexed Set to 1 if the sprite is multiplexed, otherwise set to 0.
+ * @param ubNumberOfMultiplexedSprites Number of multiplexed sprites to be set.
  * @return Newly created advanced sprite struct on success, 0 on failure.
  *
  * @see advancedSpriteRemove()
  */
-tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tBitMap *pSpriteVerticalStripBitmap1, tBitMap *pSpriteVerticalStripBitmap2 );
+tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tBitMap *pSpriteVerticalStripBitmap1, tBitMap *pSpriteVerticalStripBitmap2, UBYTE multiplexed, UBYTE ubNumberOfMultiplexedSprites);
 
 /**
  * @brief Removes given sprite from the display and destroys its struct.
@@ -68,7 +79,7 @@ void advancedSpriteRemove(tAdvancedSprite *tAdvancedSprite);
  * @brief Set Anim/content of sprite to display.
  *
  * @param pAdvancedSprite Sprite to be enabled.
- * @param animIndex Animation index from the sprite vertical strip bitmap.
+
  */
 void advancedSpriteSetFrame(tAdvancedSprite *pAdvancedSprite, UWORD animFrame);
 
@@ -126,8 +137,16 @@ void advancedSpriteProcess(tAdvancedSprite *pAdvancedSprite);
  */
 void advancedSpriteProcessChannel(tAdvancedSprite *pAdvancedSprite);
 
+void advancedSpriteMultiplexedSetPos(tAdvancedSprite *pAdvancedSprite,UBYTE ubMultiplexedIndex, WORD wX, WORD wY);
+
+void advancedSpriteMultiplexedSetPosX(tAdvancedSprite *pAdvancedSprite,UBYTE ubMultiplexedIndex, WORD wX);
+
+void advancedSpriteMultiplexedSetPosY(tAdvancedSprite *pAdvancedSprite, UBYTE ubMultiplexedIndex, WORD wY);
+
+void advancedSpriteMultiplexedSetFrame(tAdvancedSprite *pAdvancedSprite, UBYTE ubMultiplexedIndex, UWORD animFrame);
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif // _ACE_MANAGERS_SPRITE_H_
+#endif // _ACE_MANAGERS_ADVANCED_SPRITE_H_
