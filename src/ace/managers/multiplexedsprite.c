@@ -41,6 +41,7 @@ tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UWORD uwSpriteTot
 	systemUse();
 	tMultiplexedSprite *pMultiplexedSprite = memAllocFastClear(sizeof(*pMultiplexedSprite));
 	pMultiplexedSprite->ubChannelIndex = ubChannelIndex;
+	pMultiplexedSprite->isEnabled = 1;
 	pMultiplexedSprite->ubSpriteCount = ubNumberOfMultiplexedSprites;
 	pMultiplexedSprite->uwTotalHeight = (1 + uwSpriteTotalHeight) * ubNumberOfMultiplexedSprites + 1; // added "VSTART, HSTART, VSTOP for each sprite" + 1 "End of sprite data"
 	pMultiplexedSprite->pMultiplexedSpriteElement = (tMultiplexedSpriteElement **)memAllocFastClear(sizeof(tMultiplexedSpriteElement*) * ubNumberOfMultiplexedSprites);
@@ -67,19 +68,16 @@ tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UWORD uwSpriteTot
 			pChannel->pCopBlock = copBlockCreate(s_pView->pCopList, 2, 0, 1);
 		}
 	}
-	// TODO : spriteSetBitmap(pSprite, pBitmap);
 	systemUnuse();
 	return pMultiplexedSprite;
 }
 
 void spriteMultiplexedSetElement(tMultiplexedSprite *pMultiplexedSprite, UBYTE ubSpriteIndex, UWORD uwSpriteHeight, UBYTE isEnabled, UBYTE isAttached) {
+	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex] = memAllocFastClear(sizeof(tMultiplexedSpriteElement));
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->uwHeight = uwSpriteHeight;
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isEnabled = isEnabled;
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isAttached = isAttached;
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isHeaderToBeUpdated = 1;
-	//pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->wX = 0;
-	// TODO: To consolidate
-	//pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->wY = (2+uwSpriteHeight)*ubSpriteIndex; 
 }
 
 void spriteMultiplexedRemove(tMultiplexedSprite *pMultiplexedSprite) {
@@ -123,6 +121,7 @@ if(!(pBitmap->Flags & BMF_INTERLEAVED) || pBitmap->Depth != 2) {
 	}
 
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->pBitmap = pBitmap;
+	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isBitmapToBeUpdated = 1;
 	spriteMultiplexedSetHeight(pMultiplexedSprite,ubSpriteIndex, pBitmap->Rows);
 
 	tSpriteChannel *pChannel = &s_pChannelsData[pMultiplexedSprite->ubChannelIndex];
@@ -140,6 +139,7 @@ void spriteMultiplexedSpriteSetPos(tMultiplexedSprite *pMultiplexedSprite, UBYTE
 void spriteMultiplexedSetEnabled(tMultiplexedSprite *pMultiplexedSprite, UBYTE ubSpriteIndex, UBYTE isEnabled) {
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isEnabled = isEnabled;
 	pMultiplexedSprite->pMultiplexedSpriteElement[ubSpriteIndex]->isHeaderToBeUpdated = 1;
+	//TODO spriteChannelRequestCopperUpdate(pChannel);
 }
 
 void spriteMultiplexedSetAttached(tMultiplexedSprite *pMultiplexedSprite,  UBYTE spriteIndex, UBYTE isAttached) {
@@ -173,6 +173,7 @@ void spriteMultiplexedProcess(tMultiplexedSprite *pMultiplexedSprite) {
 
 			// Target the sprite header with offset
 			tHardwareSpriteHeader *pHeader = (tHardwareSpriteHeader *)((void *)&pData[offset]); // 2 words per line
+			//tHardwareSpriteHeader *pHeader = (tHardwareSpriteHeader*)(pMultiplexedSprite->pBitmap->Planes[0]);
 			// Update header
 			if (pSpriteElement->isEnabled) {
 				pHeader->uwRawPos = ((uwVStart << 8) | ((uwHStart) >> 1));
@@ -203,6 +204,7 @@ void spriteMultiplexedProcess(tMultiplexedSprite *pMultiplexedSprite) {
                     MINTERM_COOKIE
                 );
 		}
+		offsetHeight += pSpriteElement->uwHeight; // next line offset
 	}
 }
 
@@ -248,11 +250,13 @@ void spriteMultiplexedProcessChannel(UBYTE ubChannelIndex) {
 }
 
 void spriteMultiplexedSetHeight(tMultiplexedSprite *pMultiplexedSprite,UBYTE spriteIndex, UWORD uwHeight) {
-	//TODO trigger a rebuild at the end of the function
+	
 	if (pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->uwHeight != uwHeight) {
 		pMultiplexedSprite->isBitmapToBeUpdated = 1;
+		pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->uwHeight = uwHeight;
+		pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->isHeaderToBeUpdated = 1;
+		//TODO trigger a rebuild at the end of the function
 	}
-	pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->uwHeight = uwHeight;
-	pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->isHeaderToBeUpdated = 1;
+
 }
 
