@@ -249,7 +249,7 @@ void spriteMultiplexedProcessChannel(UBYTE ubChannelIndex) {
 	}
 }
 
-void spriteMultiplexedSetHeight(tMultiplexedSprite *pMultiplexedSprite,UBYTE spriteIndex, UWORD uwHeight) {
+void spriteMultiplexedSetHeight(tMultiplexedSprite *pMultiplexedSprite, UBYTE spriteIndex, UWORD uwHeight) {
 	
 	if (pMultiplexedSprite->pMultiplexedSpriteElement[spriteIndex]->uwHeight != uwHeight) {
 		pMultiplexedSprite->isBitmapToBeUpdated = 1;
