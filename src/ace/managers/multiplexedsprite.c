@@ -30,11 +30,59 @@ typedef struct tSpriteChannel {
 static const tView *s_pView;
 static tSpriteChannel s_pChannelsData[HARDWARE_SPRITE_CHANNEL_COUNT];
 static ULONG *s_pBlankSprite;
+static UBYTE s_isOwningBlankSprite;
+static tCopBlock *s_pInitialClearCopBlock;
 
 static void spriteChannelRequestCopperUpdate(tSpriteChannel *pChannel) {
 	pChannel->ubCopperRegenCount = 2; // for front/back buffers in raw mode
 }
 /// end See if can be only in sprite.c/sprite.h
+
+
+void spriteMultiplexedManagerCreate(const tView *pView, UWORD uwRawCopPos, ULONG pBlankSprite[1]) {
+	if (pBlankSprite) {
+#ifdef ACE_DEBUG
+		if (!(memType(pBlankSprite) & MEMF_CHIP)) {
+			logWrite("ERR: ILLEGAL NON-CHIP memory location for blank sprite!");
+		}
+#endif
+		s_isOwningBlankSprite = 0;
+		s_pBlankSprite = pBlankSprite;
+	} else {
+		s_isOwningBlankSprite = 1;
+		s_pBlankSprite = memAllocChipClear(sizeof(ULONG));
+		// Just to make sure we don't accidentally mismatch the control words size
+		_Static_assert(sizeof(ULONG) == sizeof(tHardwareSpriteHeader), "We expect a Hardware sprite to have a ULONG sized header");
+	}
+	// TODO: add support for non-chained mode (setting sprxdat with copper)?
+	s_pView = pView;
+	for(UBYTE i = HARDWARE_SPRITE_CHANNEL_COUNT; i--;) {
+		s_pChannelsData[i] = (tSpriteChannel){
+			.uwRawCopPos = uwRawCopPos + 2 * i
+		};
+	}
+
+	// Initially disable all sprites so that no garbage will be fed on screen
+	// before actual sprites.
+	if(pView->pCopList->ubMode == COPPER_MODE_BLOCK) {
+		s_pInitialClearCopBlock = spriteDisableInCopBlockMode(
+			s_pView->pCopList,
+			SPRITE_0 | SPRITE_1 | SPRITE_2 | SPRITE_3 |
+			SPRITE_4 | SPRITE_5 | SPRITE_6 | SPRITE_7,
+			s_pBlankSprite
+		);
+	}
+	else {
+		s_pInitialClearCopBlock = 0;
+		spriteDisableInCopRawMode(
+			s_pView->pCopList,
+			SPRITE_0 | SPRITE_1 | SPRITE_2 | SPRITE_3 |
+			SPRITE_4 | SPRITE_5 | SPRITE_6 | SPRITE_7, uwRawCopPos,
+			s_pBlankSprite
+		);
+	}
+}
+
 
 
 tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UWORD uwSpriteTotalHeight,UBYTE ubNumberOfMultiplexedSprites) {
@@ -204,7 +252,7 @@ void spriteMultiplexedProcess(tMultiplexedSprite *pMultiplexedSprite) {
                     MINTERM_COOKIE
                 );
 		}
-		offsetHeight += pSpriteElement->uwHeight; // next line offset
+		offsetHeight += pSpriteElement->uwHeight+1; // next line offset
 	}
 }
 

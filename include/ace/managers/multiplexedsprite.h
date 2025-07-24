@@ -41,6 +41,9 @@ typedef struct tMultiplexedSprite {
 	tMultiplexedSpriteElement **pMultiplexedSpriteElement;
 } tMultiplexedSprite;
 
+
+void spriteMultiplexedManagerCreate(const tView *pView, UWORD uwRawCopPos, ULONG pBlankSprite[1]);
+
 /**
  * @brief Add a multiplexed sprite on selected hardware channel.
  *
