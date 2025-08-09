@@ -58,7 +58,7 @@ void spriteMultiplexedManagerCreate(const tView *pView, UWORD uwRawCopPos, ULONG
  * @see spriteMultiplexedRemove()
  * @see spriteMultiplexedSetElement()
  */
-tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UWORD uwSpriteTotalHeight,UBYTE ubNumberOfMultiplexedSprites);
+tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UBYTE uwSpriteHeight, UBYTE ubNumberOfMultiplexedSprites);
 
 /**
  * @brief Changes bitmap image used to display the one the multiplexed sprite.

@@ -12,19 +12,13 @@
 #define SPRITE_WIDTH 16
 #define TWOBPP_BYTEWIDTH 2
 
-tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tBitMap *pSpriteVerticalStripBitmap1, tBitMap *pSpriteVerticalStripBitmap2, UBYTE multiplexed, UBYTE ubNumberOfMultiplexedSprites ) {
+tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UBYTE uwSpriteHeight,tBitMap *pSpriteVerticalStripBitmap1, tBitMap *pSpriteVerticalStripBitmap2 ) {
     tAdvancedSprite *pAdvancedSprite = memAllocFastClear(sizeof(*pAdvancedSprite));
     pAdvancedSprite->ubChannelIndex = ubChannelIndex;
     pAdvancedSprite->isEnabled = 1;
     pAdvancedSprite->uwHeight = uwSpriteHeight;
-    pAdvancedSprite->isMultiplexed = multiplexed;
-    UBYTE ubDeltaHeaderHeight = 2; // 2 words for sprite control data
-    if (multiplexed) {
-        pAdvancedSprite->pMultiplexedSprites = (tSubMultiplexedSprite **)memAllocFastClear(sizeof(tSubMultiplexedSprite*) * ubNumberOfMultiplexedSprites);
-        ubDeltaHeaderHeight=1;
-    }
-    
-    
+
+
     if(!(pSpriteVerticalStripBitmap1->Flags & BMF_INTERLEAVED) || (pSpriteVerticalStripBitmap1->Depth != 2  && (pSpriteVerticalStripBitmap1->Depth != 4 || (pAdvancedSprite->ubChannelIndex & 1) == 1))) {
         logWrite(
             "ERR: Sprite channel %hhu bitmap %p isn't interleaved 2BPP(for any channel) or 4BPP(for an even channel)\n",
@@ -124,7 +118,7 @@ tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tB
                 }
                 // Init +2 on height for sprite management data
                 pAdvancedSprite->pAnimBitmap[i] = bitmapCreate(
-                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+ubDeltaHeaderHeight,
+                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+2,
                     2, BMF_CLEAR | BMF_INTERLEAVED
                 );
                 blitCopy(
@@ -135,9 +129,9 @@ tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tB
                     MINTERM_COOKIE
                 );
                 i++;
-                // Init +delta on height for sprite management data
+                // Init +2 on height for sprite management data
                 pAdvancedSprite->pAnimBitmap[i] = bitmapCreate(
-                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+ubDeltaHeaderHeight,
+                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+2,
                     2, BMF_CLEAR | BMF_INTERLEAVED
                 );
                 blitCopy(
@@ -151,7 +145,7 @@ tAdvancedSprite *advancedSpriteAdd(UBYTE ubChannelIndex, UWORD uwSpriteHeight,tB
             } else {
                 // Init +2 on height for sprite management data
                 pAdvancedSprite->pAnimBitmap[i] = bitmapCreate(
-                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+ubDeltaHeaderHeight,
+                    SPRITE_WIDTH, pAdvancedSprite->uwHeight+2,
                     pSpriteVerticalStripBitmap->Depth, BMF_CLEAR | BMF_INTERLEAVED
                 );
                 // Copy bitmap
@@ -214,19 +208,11 @@ void advancedSpriteSetPos(tAdvancedSprite *pAdvancedSprite,WORD wX, WORD wY) {
 }
 
 void advancedSpriteSetPosX(tAdvancedSprite *pAdvancedSprite,WORD wX) {
-    if (pAdvancedSprite->isMultiplexed) {
-        pAdvancedSprite->pMultiplexedSprites[0]->wX = wX;
-        return;
-    }
     pAdvancedSprite->wX = wX;
     pAdvancedSprite->isHeaderToBeUpdated = 1;
 }
 
 void advancedSpriteSetPosY(tAdvancedSprite *pAdvancedSprite, WORD wY) {
-    if (pAdvancedSprite->isMultiplexed) {
-        pAdvancedSprite->pMultiplexedSprites[0]->wY = wY;
-        return;
-    }
     pAdvancedSprite->wY = wY;
     pAdvancedSprite->isHeaderToBeUpdated = 1;
 }
@@ -234,11 +220,6 @@ void advancedSpriteSetPosY(tAdvancedSprite *pAdvancedSprite, WORD wY) {
 void advancedSpriteSetFrame(tAdvancedSprite *pAdvancedSprite, UWORD animFrame) {
     if (animFrame >= pAdvancedSprite->uwAnimCount) {
         logWrite("ERR: Invalid animation index %hu\n", animFrame);
-        return;
-    }
-    if (pAdvancedSprite->isMultiplexed) {
-        pAdvancedSprite->pMultiplexedSprites[0]->uwAnimFrame = animFrame;
-        /// TODO
         return;
     }
     pAdvancedSprite->uwAnimFrame=animFrame;

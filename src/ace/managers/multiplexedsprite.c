@@ -85,13 +85,13 @@ void spriteMultiplexedManagerCreate(const tView *pView, UWORD uwRawCopPos, ULONG
 
 
 
-tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UWORD uwSpriteTotalHeight,UBYTE ubNumberOfMultiplexedSprites) {
+tMultiplexedSprite *spriteMultiplexedAdd(UBYTE ubChannelIndex, UBYTE uwSpriteHeight, UBYTE ubNumberOfMultiplexedSprites) {
 	systemUse();
 	tMultiplexedSprite *pMultiplexedSprite = memAllocFastClear(sizeof(*pMultiplexedSprite));
 	pMultiplexedSprite->ubChannelIndex = ubChannelIndex;
 	pMultiplexedSprite->isEnabled = 1;
 	pMultiplexedSprite->ubSpriteCount = ubNumberOfMultiplexedSprites;
-	pMultiplexedSprite->uwTotalHeight = (1 + uwSpriteTotalHeight) * ubNumberOfMultiplexedSprites + 1; // added "VSTART, HSTART, VSTOP for each sprite" + 1 "End of sprite data"
+	pMultiplexedSprite->uwTotalHeight = (1 + uwSpriteHeight) * ubNumberOfMultiplexedSprites + 1; // added "VSTART, HSTART, VSTOP for each sprite" + 1 "End of sprite data"
 	pMultiplexedSprite->pMultiplexedSpriteElement = (tMultiplexedSpriteElement **)memAllocFastClear(sizeof(tMultiplexedSpriteElement*) * ubNumberOfMultiplexedSprites);
 	pMultiplexedSprite->pBitmap = bitmapCreate(
         SPRITE_WIDTH, pMultiplexedSprite->uwTotalHeight,
