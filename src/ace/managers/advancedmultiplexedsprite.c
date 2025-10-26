@@ -17,11 +17,11 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
     pAdvancedMultiplexedSprite->ubChannelIndex = ubChannelIndex;
     pAdvancedMultiplexedSprite->isEnabled = 1;
     pAdvancedMultiplexedSprite->uwHeight = uwSpriteHeight;
-    UBYTE ubDeltaHeaderHeight = 1; // 2 words for sprite control data
-
     pAdvancedMultiplexedSprite->pMultiplexedSpriteElements = (tSubMultiplexedSprite **)memAllocFastClear(sizeof(tSubMultiplexedSprite*) * ubNumberOfMultiplexedSprites);
 
+    UBYTE ubDeltaHeaderHeight = 1; // 2 words for sprite control data
     
+    // Check bitmap validity
     if(!(pSpriteVerticalStripBitmap1->Flags & BMF_INTERLEAVED) || (pSpriteVerticalStripBitmap1->Depth != 2  && (pSpriteVerticalStripBitmap1->Depth != 4 || (pAdvancedMultiplexedSprite->ubChannelIndex & 1) == 1))) {
         logWrite(
             "ERR: Sprite channel %hhu bitmap %p isn't interleaved 2BPP(for any channel) or 4BPP(for an even channel)\n",
@@ -29,7 +29,6 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
         );
         //return ;
     }
-
     pAdvancedMultiplexedSprite->ubByteWidth = bitmapGetByteWidth(pSpriteVerticalStripBitmap1);
     if(pAdvancedMultiplexedSprite->ubByteWidth != 2 && pAdvancedMultiplexedSprite->ubByteWidth != 4) {
         logWrite(
@@ -39,21 +38,23 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
         //return;
     }
 
+    // Calculate number of animation frames
     UWORD bStripe1NbAnim = pSpriteVerticalStripBitmap1->Rows / uwSpriteHeight;
-
     UWORD bStripe2NbAnim = 0;
     if (pSpriteVerticalStripBitmap2 != NULL) {
         bStripe2NbAnim = pSpriteVerticalStripBitmap2->Rows / uwSpriteHeight;
     }
-
     pAdvancedMultiplexedSprite->uwAnimCount = bStripe1NbAnim + bStripe2NbAnim;
 
+    // Check if 4bpp
     if(pSpriteVerticalStripBitmap1->Depth == 4) {
         pAdvancedMultiplexedSprite->is4PP = 1;
     } else {
         pAdvancedMultiplexedSprite->is4PP = 0;
     }
 
+    // Calculate number of sprites
+    // 16px width
     if(pAdvancedMultiplexedSprite->ubByteWidth == 2) {
         if(pSpriteVerticalStripBitmap1->Depth == 2) {
             pAdvancedMultiplexedSprite->ubSpriteCount=1;
@@ -61,6 +62,7 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
             pAdvancedMultiplexedSprite->ubSpriteCount=2;
         }
     }
+    // 32px width
     if(pAdvancedMultiplexedSprite->ubByteWidth == 4) {
         if(pSpriteVerticalStripBitmap1->Depth == 2) {
             pAdvancedMultiplexedSprite->ubSpriteCount=2;
@@ -69,13 +71,15 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
         }
     }
 
+    // Number of bitmaps to create
     UWORD nbBitmap=pAdvancedMultiplexedSprite->uwAnimCount*pAdvancedMultiplexedSprite->ubSpriteCount;
-
+    // Limit for first bitmap
     UWORD nbBitmapLimit1=bStripe1NbAnim*pAdvancedMultiplexedSprite->ubSpriteCount;
 
+    // Alloc memory for all frames (bitmap1 & bitmap2)
     pAdvancedMultiplexedSprite->pAnimBitmap= (tBitMap **)memAllocFastClear(nbBitmap*sizeof(tBitMap));
 
-    
+    // Temp bitmap for 4bpp to 2bpp conversion
     tBitMap *tmpBitmap = bitmapCreate(
         SPRITE_WIDTH, pAdvancedMultiplexedSprite->uwHeight,
         4, BMF_CLEAR | BMF_INTERLEAVED
@@ -110,8 +114,7 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
                     SPRITE_WIDTH, pAdvancedMultiplexedSprite->uwHeight,
                     MINTERM_COOKIE
                 );
-                for (UWORD r = 0; r < tmpBitmap->Rows; r++)
-                {
+                for (UWORD r = 0; r < tmpBitmap->Rows; r++) {
                     UWORD offetSrc = r * tmpBitmap->BytesPerRow;
                     UWORD offetDst = r * pointers_low->BytesPerRow;
                     memcpy(pointers_low->Planes[0] + offetDst, tmpBitmap->Planes[0] + offetSrc, TWOBPP_BYTEWIDTH);
@@ -119,7 +122,7 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
                     memcpy(pointers_high->Planes[0] + offetDst, tmpBitmap->Planes[2] + offetSrc, TWOBPP_BYTEWIDTH);
                     memcpy(pointers_high->Planes[1] + offetDst, tmpBitmap->Planes[3] + offetSrc, TWOBPP_BYTEWIDTH);
                 }
-                // Init +2 on height for sprite management data
+                // Init+2 on height for sprite management data - TODO: see if remove the last line is possible
                 pAdvancedMultiplexedSprite->pAnimBitmap[i] = bitmapCreate(
                     SPRITE_WIDTH, pAdvancedMultiplexedSprite->uwHeight+ubDeltaHeaderHeight,
                     2, BMF_CLEAR | BMF_INTERLEAVED
@@ -146,7 +149,7 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
                 );
                 i++;
             } else {
-                // Init +2 on height for sprite management data
+                // Init +2 on height for sprite management data  - TODO: see if remove the last line is possible
                 pAdvancedMultiplexedSprite->pAnimBitmap[i] = bitmapCreate(
                     SPRITE_WIDTH, pAdvancedMultiplexedSprite->uwHeight+ubDeltaHeaderHeight,
                     pSpriteVerticalStripBitmap->Depth, BMF_CLEAR | BMF_INTERLEAVED
@@ -175,7 +178,7 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
             // 2 channels for 4bpp sprites
             pAdvancedMultiplexedSprite->pMultiplexedSprites[i] = spriteMultiplexedAdd(ubChannelIndex+i, uwSpriteHeight, ubNumberOfMultiplexedSprites);
             for (UBYTE indexMultiplexed = 0; indexMultiplexed < ubNumberOfMultiplexedSprites; indexMultiplexed++) {
-                spriteMultiplexedSetElement(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, uwSpriteHeight, 1, 1);
+                spriteMultiplexedSetElement(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, uwSpriteHeight, 1, 0);
                 spriteMultiplexedSetBitmap(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, pAdvancedMultiplexedSprite->pAnimBitmap[i]);
             }
             i++;
@@ -187,9 +190,8 @@ tAdvancedMultiplexedSprite *advancedMultiplexedSpriteAdd(UBYTE ubChannelIndex, t
             } 
         } else {
             pAdvancedMultiplexedSprite->pMultiplexedSprites[i] = spriteMultiplexedAdd(ubChannelIndex+i, uwSpriteHeight,ubNumberOfMultiplexedSprites);
-            //pAdvancedMultiplexedSprite->pAnimBitmap[i]
             for (UBYTE indexMultiplexed = 0; indexMultiplexed < ubNumberOfMultiplexedSprites; indexMultiplexed++) {
-                spriteMultiplexedSetElement(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, uwSpriteHeight, 1, 1);
+                spriteMultiplexedSetElement(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, uwSpriteHeight, 1, 0);
                 spriteMultiplexedSetBitmap(pAdvancedMultiplexedSprite->pMultiplexedSprites[i], indexMultiplexed, pAdvancedMultiplexedSprite->pAnimBitmap[i]);
             }
         }      
