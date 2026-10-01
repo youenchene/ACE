@@ -29,10 +29,12 @@ extern "C" {
 #include <ace/managers/copper.h>
 #include <ace/managers/viewport/camera.h>
 
+#define SCROLLBUFFER_HEIGHT_MODULO_AND(x, h) ((x) & ((h) - 1))
+#define SCROLLBUFFER_HEIGHT_MODULO_MOD(x, h) ((x) % (h))
 #if defined(ACE_SCROLLBUFFER_POT_BITMAP_HEIGHT)
-#define SCROLLBUFFER_HEIGHT_MODULO(x, h) ((x) & ((h) - 1))
+#define SCROLLBUFFER_HEIGHT_MODULO(x, h) SCROLLBUFFER_HEIGHT_MODULO_AND(x, h)
 #else
-#define SCROLLBUFFER_HEIGHT_MODULO(x, h) ((x) % (h))
+#define SCROLLBUFFER_HEIGHT_MODULO(x, h) SCROLLBUFFER_HEIGHT_MODULO_MOD(x, h)
 #endif
 
 #if defined(ACE_SCROLLBUFFER_ENABLE_SCROLL_X)
@@ -65,9 +67,14 @@ typedef enum tScrollBufferCreateTags {
 	TAG_SCROLLBUFFER_COPLIST_OFFSET_BREAK = (TAG_USER|7),
 
 	TAG_SCROLLBUFFER_MARGIN_WIDTH =   (TAG_USER|8),
+
+	TAG_SCROLLBUFFER_FRONT_BITMAP =   (TAG_USER|9),
+	TAG_SCROLLBUFFER_BACK_BITMAP =    (TAG_USER|10),
 } tScrollBufferCreateTags;
 
 #define SCROLLBUFFER_FLAG_COPLIST_RAW 1
+#define SCROLLBUFFER_FLAG_OWN_FRONT   2
+#define SCROLLBUFFER_FLAG_OWN_BACK    4
 
 /* Types */
 
@@ -110,9 +117,23 @@ void scrollBufferDestroy(tScrollBufferManager *pManager);
  */
 void scrollBufferProcess(tScrollBufferManager *pManager);
 
+/**
+ * @brief Returns pixel dimensions of scroll buffer bitmap(s) for a VPort setup.
+ * Use with bitmapGetBufferSize() to allocate reusable CHIP memory.
+ *
+ * Bitmap height uses @p uwBoundWidth (horizontal-scroll band count), not
+ * @p uwBoundHeight; the latter only limits camera Y (see TAG_SCROLLBUFFER_BOUND_HEIGHT).
+ */
+void scrollBufferGetBitmapDimensions(
+	const tVPort *pVPort, UBYTE ubMarginWidth,
+	UWORD uwBoundWidth, UWORD uwBoundHeight,
+	UWORD *pWidth, UWORD *pHeight
+);
+
 void scrollBufferReset(
 	tScrollBufferManager *pManager, UBYTE ubMarginWidth,
-	UWORD uwBoundWidth, UWORD uwBoundHeight, UBYTE ubBitmapFlags, UBYTE isDblBfr
+	UWORD uwBoundWidth, UWORD uwBoundHeight, UBYTE ubBitmapFlags, UBYTE isDblBfr,
+	tBitMap *pCustomFront, tBitMap *pCustomBack
 );
 
 /**

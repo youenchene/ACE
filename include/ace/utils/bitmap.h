@@ -55,6 +55,12 @@ typedef struct _tBitMap {
 #define BMF_CONTIGUOUS (1 << 6)
 
 /**
+ * @brief Plane memory is supplied externally; bitmapDestroy() frees only the
+ * tBitMap header, not bitplane pointers.
+ */
+#define BMF_EXTERNAL (1 << 7)
+
+/**
  * @brief New bitmap format.
  * Don't use until adopted into entire engine - this struct is more like feature
  * request or memo.
@@ -90,6 +96,24 @@ typedef struct _tAceBitmap {
  */
 tBitMap* bitmapCreate(
 	UWORD uwWidth, UWORD uwHeight, UBYTE ubDepth, UBYTE ubFlags
+);
+
+/**
+ * @brief Returns CHIP/FAST memory size required for all bitmap's bitplanes.
+ */
+ULONG bitmapGetBufferSize(UWORD uwWidth, UWORD uwHeight, UBYTE ubDepth);
+
+/**
+ * @brief Creates a tBitMap header pointing at existing plane memory.
+ * @param pMem Start of bitplane storage (CHIP for display buffers).
+ * @param ubFlags Layout flags (BMF_INTERLEAVED, BMF_CONTIGUOUS). BMF_CLEAR and
+ * BMF_FASTMEM are ignored. BMF_EXTERNAL is set automatically.
+ *
+ * @see bitmapGetBufferSize
+ * @see bitmapDestroy
+ */
+tBitMap *bitmapCreateFromMem(
+	void *pMem, UWORD uwWidth, UWORD uwHeight, UBYTE ubDepth, UBYTE ubFlags
 );
 
 /**

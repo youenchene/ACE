@@ -52,7 +52,7 @@ void systemGetBlitterFromOs(void);
 
 void systemReleaseBlitterToOs(void);
 
-UBYTE systemBlitterIsUsed(void);
+UBYTE systemBlitterIsReleasedToOs(void);
 
 void systemDump(void);
 
@@ -93,6 +93,23 @@ void systemCheckStack(void);
 UWORD systemGetVersion(void);
 
 UBYTE systemIsStartVolumeWritable(void);
+
+/**
+ * Disable caches on 680x0 CPUs. Previous cache control words
+ * are stored so they can later be restored with
+ * systemRestoreCpuCaches.
+ *
+ * @see systemRestoreCpuCaches
+ */
+void systemDisableCpuCaches();
+
+/**
+ * Restore cache control settings after a previous call to
+ * systemDisableCpuCaches.
+ *
+ * @see systemDisableCpuCaches
+ */
+void systemRestoreCpuCaches();
 
 //---------------------------------------------------------------------- GLOBALS
 

@@ -57,3 +57,13 @@ UBYTE spriteDisableInCopRawMode(
 
 	return ubCmdCount;
 }
+
+#ifdef ACE_USE_AGA_FEATURES
+void spriteSetOddColorPaletteBank(UBYTE ubIndex) {
+	customSetBplCon4((UWORD)((customGetBplCon4() & 0xFFF0) | (ubIndex & 0x0F)));
+}
+
+void spriteSetEvenColorPaletteBank(UBYTE ubIndex) {
+	customSetBplCon4((UWORD)((customGetBplCon4() & 0xFF0F) | (((UWORD)(ubIndex & 0x0F)) << 4)));
+}
+#endif

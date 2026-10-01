@@ -237,7 +237,7 @@ static ULONG pakSubfileRead(void *pData, void *pDest, ULONG ulSize) {
 		}
 	}
 
-	ULONG ulRead = fileRead(pPak->pFile, pDest, ulSize);
+	ULONG ulRead = fileReadBytes(pPak->pFile, (UBYTE*)pDest, ulSize);
 	pSubfileData->ulPos += ulRead;
 	return ulRead;
 }
@@ -394,8 +394,7 @@ static void pakCompressedFlush(UNUSED_ARG void *pData) {
 	// no-op
 }
 
-static UWORD pakFileGetFileIndex(const tPakFile *pPakFile, const char *szPath) {
-	ULONG ulPathHash = adler32Buffer((UBYTE*)szPath, strlen(szPath)); // TODO: Calculate path hash
+static UWORD pakFileGetFileIndexByHash(const tPakFile *pPakFile, ULONG ulPathHash) {
 	for(UWORD i = 0; i < pPakFile->uwFileCount; ++i) {
 		if(pPakFile->pEntries[i].ulPathChecksum == ulPathHash) {
 			return i;
@@ -417,13 +416,13 @@ tPakFile *pakFileOpen(const char *szPath, UBYTE isUninterrupted) {
 	tPakFile *pPakFile = memAllocFast(sizeof(*pPakFile));
 	pPakFile->pFile = pMainFile;
 	pPakFile->pPrevReadSubfile = 0;
-	fileRead(pMainFile, &pPakFile->uwFileCount, sizeof(pPakFile->uwFileCount));
+	fileReadWords(pMainFile, &pPakFile->uwFileCount, 1);
 	pPakFile->pEntries = memAllocFast(sizeof(pPakFile->pEntries[0]) * pPakFile->uwFileCount);
 	for(UWORD i = 0; i < pPakFile->uwFileCount; ++i) {
-		fileRead(pMainFile, &pPakFile->pEntries[i].ulPathChecksum, sizeof(pPakFile->pEntries[i].ulPathChecksum));
-		fileRead(pMainFile, &pPakFile->pEntries[i].ulOffs, sizeof(pPakFile->pEntries[i].ulOffs));
-		fileRead(pMainFile, &pPakFile->pEntries[i].ulSizeUncompressed, sizeof(pPakFile->pEntries[i].ulSizeUncompressed));
-		fileRead(pMainFile, &pPakFile->pEntries[i].ulSizeData, sizeof(pPakFile->pEntries[i].ulSizeData));
+		fileReadLongs(pMainFile, &pPakFile->pEntries[i].ulPathChecksum, 1);
+		fileReadLongs(pMainFile, &pPakFile->pEntries[i].ulOffs, 1);
+		fileReadLongs(pMainFile, &pPakFile->pEntries[i].ulSizeUncompressed, 1);
+		fileReadLongs(pMainFile, &pPakFile->pEntries[i].ulSizeData, 1);
 	}
 	logWrite("Pak file: %p, file count: %hu\n", pPakFile, pPakFile->uwFileCount);
 
@@ -439,12 +438,31 @@ void pakFileClose(tPakFile *pPakFile) {
 	logBlockEnd("pakFileClose()");
 }
 
-tFile *pakFileGetFile(tPakFile *pPakFile, const char *szInternalPath) {
-	logBlockBegin("pakFileGetFile(pPakFile: %p, szInternalPath: '%s')", pPakFile, szInternalPath);
-	UWORD uwFileIndex = pakFileGetFileIndex(pPakFile, szInternalPath);
+tFile *pakFileGetFileByPath(tPakFile *pPakFile, const char *szInternalPath) {
+	logBlockBegin("pakFileGetFileByPath(pPakFile: %p, szInternalPath: '%s')", pPakFile, szInternalPath);
+	tFile *pFile = pakFileGetFileByHash(pPakFile, pakFileGetPathHash(szInternalPath));
+	logBlockEnd("pakFileGetFileByPath()");
+	return pFile;
+}
+
+tFile *pakFileGetFileByHash(tPakFile *pPakFile, ULONG ulPathHash) {
+	logBlockBegin("pakFileGetFileByHash(pPakFile: %p, ulPathHash: 0x%08lX)", pPakFile, ulPathHash);
+	tFile *pFile = pakFileGetFileByIndex(pPakFile, pakFileGetFileIndexByHash(pPakFile, ulPathHash));
+	logBlockEnd("pakFileGetFileByHash()");
+	return pFile;
+}
+
+tFile *pakFileGetFileByIndex(tPakFile *pPakFile, UWORD uwFileIndex) {
+	logBlockBegin("pakFileGetFileByIndex(pPakFile: %p, uwFileIndex: %hu)", pPakFile, uwFileIndex);
+	if(uwFileIndex >= pPakFile->uwFileCount) {
+		logWrite("ERR: File index %hu out of range %hu\n", uwFileIndex, pPakFile->uwFileCount);
+		logBlockEnd("pakFileGetFileByIndex()");
+		return 0;
+	}
+
 	if(uwFileIndex == UWORD_MAX) {
 		logWrite("ERR: Can't find subfile in pakfile\n");
-		logBlockEnd("pakFileGetFile()");
+		logBlockEnd("pakFileGetFileByIndex()");
 		return 0;
 	}
 	UBYTE isCompressed = pPakFile->pEntries[uwFileIndex].ulSizeUncompressed != pPakFile->pEntries[uwFileIndex].ulSizeData;
@@ -484,8 +502,12 @@ tFile *pakFileGetFile(tPakFile *pPakFile, const char *szInternalPath) {
 		pFile = pCompressedFile;
 	}
 
-	logBlockEnd("pakFileGetFile()");
+	logBlockEnd("pakFileGetFileByIndex()");
 	return pFile;
+}
+
+ULONG pakFileGetPathHash(const char *szPath) {
+	return adler32Buffer((UBYTE*)szPath, strlen(szPath)); // TODO: Calculate path hash
 }
 
 #endif

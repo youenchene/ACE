@@ -51,12 +51,25 @@ tView *viewCreate(void *pTags, ...) {
 	if(tagGet(pTags, vaTags, TAG_VIEW_GLOBAL_BPP, 1)) {
 		pView->uwFlags |= VIEW_FLAG_GLOBAL_BPP;
 	}
+#ifdef ACE_USE_AGA_FEATURES
+	if(tagGet(pTags, vaTags, TAG_VIEW_USES_AGA, 1)) {
+		pView->uwFlags |= VIEW_FLAG_GLOBAL_AGA;
+	}
+	logWrite(
+		"Extra flags: %s%s%s%s\n",
+		(pView->uwFlags & VIEW_FLAG_GLOBAL_PALETTE) ? "GLOBAL_PALETTE " : "",
+		(pView->uwFlags & VIEW_FLAG_GLOBAL_BPP) ? "GLOBAL_BPP " : "",
+		(pView->uwFlags & VIEW_FLAG_GLOBAL_HRES) ? "GLOBAL_HRES " : "",
+		(pView->uwFlags & VIEW_FLAG_GLOBAL_AGA) ? "GLOBAL_AGA " : ""
+	);
+#else
 	logWrite(
 		"Extra flags: %s%s%s\n",
 		(pView->uwFlags & VIEW_FLAG_GLOBAL_PALETTE) ? "GLOBAL_PALETTE " : "",
 		(pView->uwFlags & VIEW_FLAG_GLOBAL_BPP) ? "GLOBAL_BPP " : "",
 		(pView->uwFlags & VIEW_FLAG_GLOBAL_HRES) ? "GLOBAL_HRES " : ""
 	);
+#endif
 
 	// Get the Y pos and height
 	const UWORD uwDefaultHeight = -1;
@@ -155,17 +168,73 @@ void viewProcessManagers(tView *pView) {
 void viewUpdateGlobalPalette(const tView *pView) {
 #ifdef AMIGA
 	if(pView->uwFlags & VIEW_FLAG_GLOBAL_PALETTE) {
+#ifdef ACE_USE_AGA_FEATURES
+		if(pView->pFirstVPort->eFlags & VP_FLAG_AGA) {
+			UBYTE ubBpp = pView->pFirstVPort->ubBpp;
+			UBYTE colorBanks = (ubBpp >= 5) ? (1 << (ubBpp - 5)) : 1;
+			UBYTE colorsInBank = (ubBpp >= 5) ? 32 : (1 << ubBpp);
+			ULONG *pPaletteAGA = (ULONG *)pView->pFirstVPort->pPalette;
+			for(UBYTE p = 0; p < colorBanks; ++p) {
+				for(UBYTE i = 0; i < colorsInBank; ++i) {
+					UBYTE r = pPaletteAGA[(p * 32) + i] >> 16;
+					UBYTE g = pPaletteAGA[(p * 32) + i] >> 8;
+					UBYTE b = pPaletteAGA[(p * 32) + i];
+					g_pCustom->bplcon3 = p << 13; // Set palette bank LOW.
+					g_pCustom->color[i] = (r >> 4) << 8 | (g >> 4) << 4 | (b >> 4) << 0;
+					g_pCustom->bplcon3 = p << 13 | BV(9); // Set palette bank High.
+					g_pCustom->color[i] = (0x0F & r) << 8 | (0x0F & g) << 4 | (0x0F & b) << 0;
+				}
+			}
+		}
+		else {
+			for(UBYTE i = 0; i < 32; ++i) {
+				g_pCustom->color[i] = pView->pFirstVPort->pPalette[i];
+			}
+		}
+#else
 		for(UBYTE i = 0; i < 32; ++i) {
 			g_pCustom->color[i] = pView->pFirstVPort->pPalette[i];
 		}
+#endif
 	}
 #endif // AMIGA
 }
 
-/**
- *  @todo bplcon0 BPP is set up globally - make it only when all vports
- *        are truly of same BPP.
- */
+static UWORD viewBuildBplCon0(const tView *pView) {
+	const tVPort *pVPort = pView->pFirstVPort;
+	UWORD uwBplCon0 = BV(9); // composite output
+
+#ifdef ACE_USE_AGA_FEATURES
+	if(pVPort->eFlags & VP_FLAG_AGA) {
+		uwBplCon0 |= (0x07 & pVPort->ubBpp) << 12;
+		if(pVPort->ubBpp & 0x08) {
+			uwBplCon0 |= BV(4);
+		}
+	}
+	else
+#endif
+	{
+		uwBplCon0 |= pVPort->ubBpp << 12;
+	}
+
+	if((pView->uwFlags & VIEW_FLAG_GLOBAL_HRES) && (pVPort->eFlags & VP_FLAG_HIRES)) {
+		uwBplCon0 |= BV(15);
+	}
+
+	return uwBplCon0;
+}
+
+static UWORD viewBuildBplCon2(UNUSED_ARG const tView *pView) {
+#ifdef ACE_USE_AGA_FEATURES
+	const tVPort *pVPort = pView->pFirstVPort;
+	if((pVPort->eFlags & VP_FLAG_AGA) && pVPort->ubBpp == 6) {
+		/* KILLEHB + Kickstart-style PF/sprite priority (BV(2)|BV(5) == 0x24) */
+		return (UWORD)(BV(2) | BV(5) | BV(9));
+	}
+#endif
+	return (UWORD)(BV(2) | BV(5));
+}
+
 void viewLoad(tView *pView) {
 	logBlockBegin("viewLoad(pView: %p)", pView);
 
@@ -179,8 +248,12 @@ void viewLoad(tView *pView) {
 		g_pCustom->bplcon0 = 0; // No output
 		g_pCustom->fmode = 0;   // AGA fix
 		g_pCustom->bplcon3 = 0; // AGA fix
-		g_pCustom->bplcon4 = 0x0011; // AGA fix
+		customSetBplCon4(BPLCON4_AGA_RESET);
+#ifdef ACE_USE_AGA_FEATURES
+		for(UBYTE i = 0; i < 8; ++i) {
+#else
 		for(UBYTE i = 0; i < 6; ++i) {
+#endif
 			g_pCustom->bplpt[i] = 0;
 		}
 		g_pCustom->bpl1mod = 0;
@@ -202,20 +275,19 @@ void viewLoad(tView *pView) {
 			}
 		}
 #endif
-		pView->uwBplCon0 = 0;
-		if(pView->uwFlags & VIEW_FLAG_GLOBAL_BPP) {
-			pView->uwBplCon0 |= pView->pFirstVPort->ubBpp << 12;
-		}
-		if(pView->uwFlags & VIEW_FLAG_GLOBAL_HRES) {
-			pView->uwBplCon0 |= ((pView->pFirstVPort->eFlags & VP_FLAG_HIRES) != 0) << 15;
-		}
-		pView->uwBplCon0 |= BV(9); // composite output
+		// TODO: set uwBplCon2 in viewCreate, make the playfield/sprite priority
+		// configurable via tags
 
 		g_sCopManager.pCopList = pView->pCopList;
-		g_pCustom->bplcon0 = pView->uwBplCon0; // BPP + composite output
-		g_pCustom->fmode = 0; // AGA fix
+		g_pCustom->bplcon0 = viewBuildBplCon0(pView);
+		g_pCustom->bplcon2 = viewBuildBplCon2(pView);
 		g_pCustom->bplcon3 = 0; // AGA fix
-		g_pCustom->bplcon4 = 0x0011; // AGA fix
+		customSetBplCon4(BPLCON4_AGA_RESET);
+#ifdef ACE_USE_AGA_FEATURES
+		g_pCustom->fmode = pView->pFirstVPort->ubFmode;
+#else
+		g_pCustom->fmode = 0; // AGA fix
+#endif
 
 		UWORD uwDiwStartX = pView->ubPosX;
 		UWORD uwDiwStopX = uwDiwStartX + pView->uwWidth - 256;
@@ -283,6 +355,17 @@ tVPort *vPortCreate(void *pTagList, ...) {
 	const UWORD uwDefaultBpp = 4; // 'Cuz copper is slower on 5bpp+ in OCS
 	pVPort->ubBpp = tagGet(pTagList, vaTags, TAG_VPORT_BPP, uwDefaultBpp);
 
+#ifdef ACE_USE_AGA_FEATURES
+	if(
+		tagGet(pTagList, vaTags, TAG_VPORT_USES_AGA, 0) ||
+		((pView->uwFlags & VIEW_FLAG_GLOBAL_AGA) && pPrevVPort && pPrevVPort->eFlags & VP_FLAG_AGA)
+	) {
+		pVPort->eFlags |= VP_FLAG_AGA;
+	}
+	const UBYTE ubDefaultFmode = 0;
+	pVPort->ubFmode = tagGet(pTagList, vaTags, TAG_VPORT_FMODE, ubDefaultFmode);
+#endif
+
 	// Get dimensions
 	// FIXME: this doesn't work correctly due to diwstrt/stop being set globally
 	// in view, but is needed for vport manger bitmap default size calcs.
@@ -320,17 +403,39 @@ tVPort *vPortCreate(void *pTagList, ...) {
 	}
 
 	// Palette tag
-	UWORD *pSrcPalette = (UWORD*)tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_PTR, 0);
-	if(pSrcPalette) {
-		UWORD uwPaletteSize = tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_SIZE, 0xFFFF);
-		if(uwPaletteSize == 0xFFFF) {
-			logWrite("WARN: you must specify palette size in TAG_VPORT_PALETTE_SIZE\n");
+#ifdef ACE_USE_AGA_FEATURES
+	if(pVPort->eFlags & VP_FLAG_AGA) {
+		pVPort->pPalette = memAllocFastClear(sizeof(ULONG) * (1 << pVPort->ubBpp));
+		UWORD *pSrcPalette = (UWORD *)tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_PTR, 0);
+		if(pSrcPalette) {
+			UWORD uwPaletteSize = tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_SIZE, 0xFFFF);
+			if(uwPaletteSize == 0xFFFF) {
+				logWrite("WARN: you must specify palette size in TAG_VPORT_PALETTE_SIZE\n");
+			}
+			else if(!uwPaletteSize || uwPaletteSize > 256) {
+				logWrite("ERR: Wrong palette size: %hu\n", uwPaletteSize);
+			}
+			else {
+				memcpy(pVPort->pPalette, pSrcPalette, uwPaletteSize * sizeof(ULONG));
+			}
 		}
-		else if(!uwPaletteSize || uwPaletteSize > 32) {
-			logWrite("ERR: Wrong palette size: %hu\n", uwPaletteSize);
-		}
-		else {
-			memcpy(pVPort->pPalette, pSrcPalette, uwPaletteSize * sizeof(UWORD));
+	}
+	else
+#endif
+	{
+		pVPort->pPalette = memAllocFastClear(sizeof(UWORD) * 32);
+		UWORD *pSrcPalette = (UWORD *)tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_PTR, 0);
+		if(pSrcPalette) {
+			UWORD uwPaletteSize = tagGet(pTagList, vaTags, TAG_VPORT_PALETTE_SIZE, 0xFFFF);
+			if(uwPaletteSize == 0xFFFF) {
+				logWrite("WARN: you must specify palette size in TAG_VPORT_PALETTE_SIZE\n");
+			}
+			else if(!uwPaletteSize || uwPaletteSize > 32) {
+				logWrite("ERR: Wrong palette size: %hu\n", uwPaletteSize);
+			}
+			else {
+				memcpy(pVPort->pPalette, pSrcPalette, uwPaletteSize * sizeof(UWORD));
+			}
 		}
 	}
 
@@ -374,7 +479,17 @@ void vPortDestroy(tVPort *pVPort) {
 			}
 			logBlockEnd("Destroying managers");
 
-			// Free stuff
+#ifdef ACE_USE_AGA_FEATURES
+			if(pVPort->eFlags & VP_FLAG_AGA) {
+				memFree(pVPort->pPalette, sizeof(ULONG) * (1 << pVPort->ubBpp));
+			}
+			else {
+				memFree(pVPort->pPalette, sizeof(UWORD) * 32);
+			}
+#else
+			memFree(pVPort->pPalette, sizeof(UWORD) * 32);
+#endif
+
 			memFree(pVPort, sizeof(tVPort));
 			break;
 		}
@@ -386,7 +501,6 @@ void vPortDestroy(tVPort *pVPort) {
 	}
 	logBlockEnd("vPortDestroy()");
 }
-
 
 void vPortUpdatePalette(tVPort *pVPort) {
 	// TODO: If not same palettes on all vports, there are 2 strategies to do them:

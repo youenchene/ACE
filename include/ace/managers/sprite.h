@@ -12,7 +12,6 @@
  *
  * @todo Add support for chained sprites - only one per channel atm
  * @todo Add support for attached (16-color) sprites?
- * @todo AGA differences?
  * @todo Separate spriteAdd/spriteRemove from spriteCreate/spriteDestroy
  * @todo Make allocations optional, allow using spriteInit(tSprite *) instead of Create/Destroy
  * @todo Allow using fragments of bitmap (specified Y offset) for sprite tiles support. How to solve metadata writing?
@@ -34,6 +33,9 @@ typedef struct tSprite {
 	UBYTE isEnabled;
 	UBYTE isHeaderToBeUpdated;
 	UBYTE isAttached; // Odd Sprites Only.
+#ifdef ACE_USE_AGA_FEATURES
+	UBYTE ubFineX; ///< 1/4 px remainder, 0-3 (SPRxCTL SH0/SH1)
+#endif
 } tSprite;
 
 /**
@@ -106,6 +108,9 @@ void spriteRemove(tSprite *pSprite);
  * @param pBitmap Bitmap to be used for display/control data. The bitmap must be
  * in 2BPP interleaved format as well as start and end with an empty line,
  * which will not be displayed but used for storing control data.
+ * Width is 16px on OCS/ECS. With ACE_USE_AGA_FEATURES, 32px and 64px are also
+ * valid; the interleaved line must match `TAG_VPORT_FMODE` sprite-fetch
+ * (POS at +0, CTL at half the line: 32px → +4).
  */
 void spriteSetBitmap(tSprite *pSprite, tBitMap *pBitmap);
 
@@ -135,6 +140,28 @@ void spriteSetEnabled(tSprite *pSprite, UBYTE isEnabled);
  * @see spriteProcess()
  */
 void spriteSetAttached(tSprite *pSprite, UBYTE isAttached);
+
+#ifdef ACE_USE_AGA_FEATURES
+/**
+ * @brief Sets the AGA fine (1/4 px) X remainder. Clamped to 0-3.
+ * Sprites do not follow playfield BPLCON1; set this yourself if they should match.
+ */
+void spriteSetFineX(tSprite *pSprite, UBYTE ubFineX);
+
+/**
+ * @brief Moves the sprite by a 1/4 px X delta. Fine X carries into @c wX (4 units/pixel).
+ */
+void spriteMoveByFine(tSprite *pSprite, WORD wDxFine);
+#endif
+
+static inline UBYTE spriteGetFineX(const tSprite *pSprite) {
+#ifdef ACE_USE_AGA_FEATURES
+	return pSprite->ubFineX;
+#else
+	(void)pSprite;
+	return 0;
+#endif
+}
 
 /**
  * @brief Sets metadata update as pending. Be sure to call it after

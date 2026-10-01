@@ -15,7 +15,12 @@
 #include "test/interleaved.h"
 #include "test/lines.h"
 #include "test/buffer_scroll.h"
+#include "test/buffer_reuse.h"
 #include "test/twister.h"
+#include "test/simple_buffer_bpp.h"
+#include "test/scroll_tile_buffer.h"
+#include "test/mouse_sprite.h"
+#include "test/sprites.h"
 
 tStateManager *g_pGameStateManager = 0;
 tState g_pTestStates[TEST_STATE_COUNT] = {
@@ -28,7 +33,12 @@ tState g_pTestStates[TEST_STATE_COUNT] = {
     [TEST_STATE_BLIT_SMALL_DEST] = {.cbCreate = gsTestBlitSmallDestCreate, .cbLoop = gsTestBlitSmallDestLoop, .cbDestroy = gsTestBlitSmallDestDestroy},
     [TEST_STATE_INTERLEAVED] = {.cbCreate = gsTestInterleavedCreate, .cbLoop = gsTestInterleavedLoop, .cbDestroy = gsTestInterleavedDestroy},
     [TEST_STATE_BUFFER_SCROLL] = {.cbCreate = gsTestBufferScrollCreate, .cbLoop = gsTestBufferScrollLoop, .cbDestroy = gsTestBufferScrollDestroy},
+    [TEST_STATE_BUFFER_REUSE] = {.cbCreate = gsTestBufferReuseCreate, .cbLoop = gsTestBufferReuseLoop, .cbDestroy = gsTestBufferReuseDestroy},
     [TEST_STATE_TWISTER] = {.cbCreate = gsTestTwisterCreate, .cbLoop = gsTestTwisterLoop, .cbDestroy = gsTestTwisterDestroy},
+    [TEST_STATE_SIMPLEBUFFER_BPP_FMODE] = {.cbCreate = gsTestDiagSimpleBufferCreate, .cbLoop = gsTestDiagSimpleBufferLoop, .cbDestroy = gsTestDiagSimpleBufferDestroy},
+    [TEST_STATE_SCROLLTILEBUFFER_BPP_FMODE] = {.cbCreate = gsTestDiagScrollTileBufferCreate, .cbLoop = gsTestDiagScrollTileBufferLoop, .cbDestroy = gsTestDiagScrollTileBufferDestroy},
+    [TEST_STATE_MOUSE_SPRITE] = {.cbCreate = gsTestMouseSpriteCreate, .cbLoop = gsTestMouseSpriteLoop, .cbDestroy = gsTestMouseSpriteDestroy},
+    [TEST_STATE_SPRITES] = {.cbCreate = gsTestSpritesCreate, .cbLoop = gsTestSpritesLoop, .cbDestroy = gsTestSpritesDestroy},
 };
 
 #define GENERIC_MAIN_LOOP_CONDITION gameIsRunning() && g_pGameStateManager->pCurrent

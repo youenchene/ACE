@@ -32,9 +32,23 @@ endfunction()
 
 function(convertPalette TARGET PALETTE_IN PALETTE_OUT)
 	getToolPath(palette_conv TOOL_PALETTE_CONV)
+	set(options CONVERT_COLORS AGA_COLORS)
+	set(oneValArgs)
+	set(multiValArgs)
+	cmake_parse_arguments(
+		convertPalette "${options}" "${oneValArgs}" "${multiValArgs}" ${ARGN}
+	)
+
+	if(${convertPalette_CONVERT_COLORS})
+		list(APPEND extraFlags "-cc")
+	endif()
+	if(${convertPalette_AGA_COLORS})
+		list(APPEND extraFlags "-aga")
+	endif()
+
 	add_custom_command(
 		OUTPUT ${PALETTE_OUT}
-		COMMAND ${TOOL_PALETTE_CONV} ${PALETTE_IN} ${PALETTE_OUT}
+		COMMAND ${TOOL_PALETTE_CONV} ${PALETTE_IN} ${PALETTE_OUT} ${extraFlags}
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 		DEPENDS ${PALETTE_IN}
 	)
@@ -159,6 +173,47 @@ function(transformBitmap)
 		DEPENDS ${args_SOURCE}
 	)
 	target_sources(${args_TARGET} PUBLIC ${args_DESTINATION})
+endfunction()
+
+# Convert a PNG to an interleaved 2BPP sprite .bm.
+# ATTACHED splits a 16-color image into lo/hi bitmaps.
+# PAD adds empty header/footer rows for sprite control words.
+function(convertSprite)
+	getToolPath(sprite_conv TOOL_SPRITE_CONV)
+	cmake_parse_arguments(
+		args "ATTACHED;PAD" "TARGET;PALETTE;SOURCE;DESTINATION;LO;HI" "" ${ARGN}
+	)
+	toAbsolute(args_PALETTE)
+	toAbsolute(args_SOURCE)
+
+	set(_sprFlags)
+	if(args_PAD)
+		list(APPEND _sprFlags -pad)
+	endif()
+
+	if(args_ATTACHED)
+		toAbsolute(args_LO)
+		toAbsolute(args_HI)
+		set(_sprOuts ${args_LO} ${args_HI})
+		add_custom_command(
+			OUTPUT ${_sprOuts}
+			COMMAND ${TOOL_SPRITE_CONV} ${args_PALETTE} ${args_SOURCE}
+				-attached -o ${args_LO} ${args_HI} ${_sprFlags}
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			DEPENDS ${args_PALETTE} ${args_SOURCE}
+		)
+	else()
+		toAbsolute(args_DESTINATION)
+		set(_sprOuts ${args_DESTINATION})
+		add_custom_command(
+			OUTPUT ${_sprOuts}
+			COMMAND ${TOOL_SPRITE_CONV} ${args_PALETTE} ${args_SOURCE}
+				-o ${args_DESTINATION} ${_sprFlags}
+			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+			DEPENDS ${args_PALETTE} ${args_SOURCE}
+		)
+	endif()
+	target_sources(${args_TARGET} PUBLIC ${_sprOuts})
 endfunction()
 
 function(extractBitmaps)

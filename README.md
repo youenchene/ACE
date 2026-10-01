@@ -8,6 +8,7 @@ ACE uses Amiga hardware features directly, aiming for as much speed as possible.
 The code is OS-friendly, allowing running from and exiting to Workbench gracefully.
 
 Current feature set is OCS-oriented, although produced code should work on AGA just fine.
+AGA features have been added recently and should work but they weren't thoroughly battle-tested.
 
 For build instructions basic how to and contributing guidelines, refer to [docs](docs/README.md).
 
@@ -53,6 +54,7 @@ In alphabetical order:
 - [Chaos Arena](https://github.com/Last-Minute-Creations/chaosArena)
 - [Flappy Ace](https://github.com/NZjeux26/FlappyAceWin)
 - [GermZ](https://github.com/Last-Minute-Creations/germz)
+- [GermZ Survivor](https://github.com/Last-Minute-Creations/GermzSurvivor)
 - [Goblin Villages](https://github.com/Last-Minute-Creations/goblin-villages)
 - [Impsbru](https://github.com/approxit/impsbru)
 - [OpenFire](https://github.com/Last-Minute-Creations/openFire)

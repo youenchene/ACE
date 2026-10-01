@@ -18,6 +18,23 @@ extern "C" {
 #define REGPTR volatile * const
 #define HARDWARE_SPRITE_CHANNEL_COUNT 8
 
+#define SERDATRB_OVR  15
+#define SERDATRB_RBF  14
+#define SERDATRB_TBE  13
+#define SERDATRB_TSRE 12
+#define SERDATRB_RXD  11
+
+#define SERDATRF_OVR  BV(SERDATRB_OVR)
+#define SERDATRF_RBF  BV(SERDATRB_RBF)
+#define SERDATRF_TBE  BV(SERDATRB_TBE)
+#define SERDATRF_TSRE BV(SERDATRB_TSRE)
+#define SERDATRF_RXD  BV(SERDATRB_RXD)
+
+// Amiga RKM: Recommended baud range is 110-292,000
+#define SERPER_PAL(baud) ((3546895 / baud) - 1)
+#define SERPER_NTSC(baud) ((3579545 / baud) - 1)
+#define SERPER(baud) (systemIsPal() ? SERPER_PAL(baud) : SERPER_NTSC(baud))
+
 typedef struct Custom tCustom;
 
 /**
@@ -196,6 +213,29 @@ void ciaSetTimerB(tCia REGPTR pCia, UWORD uwTicks);
 tRayPos getRayPos(void);
 
 extern tCustom FAR REGPTR g_pCustom;
+
+/**
+ * AGA BPLCON4 reset: BPLAM=0, even sprite bank 1, odd sprite bank 1.
+ * Matches OCS sprite colors 16–31. Write via customSetBplCon4() — the register
+ * is write-only.
+ */
+#define BPLCON4_AGA_RESET 0x0011
+
+/**
+ * @brief Writes BPLCON4 (full 16-bit MOVE) and keeps a CPU copy.
+ *
+ * Custom registers are write-only: a read returns bus noise. RMW of the
+ * sprite-bank nibbles would copy that noise into BPLAM (playfield XOR,
+ * bits 15-8). Bank helpers patch this copy, then write the whole word.
+ *
+ * @param uwBplCon4 Full value. viewLoad() uses BPLCON4_AGA_RESET.
+ */
+void customSetBplCon4(UWORD uwBplCon4);
+
+/**
+ * @brief Returns the CPU copy of BPLCON4 last written by customSetBplCon4().
+ */
+UWORD customGetBplCon4(void);
 
 /**
  * Bitplane display regs with 16-bit access.

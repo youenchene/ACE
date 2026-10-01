@@ -105,7 +105,7 @@ DISKFILE_PRIVATE ULONG diskFileRead(void *pData, void *pDest, ULONG ulSize) {
 		if(!pDiskFileData->isUninterrupted) {
 			fileAccessEnable();
 		}
-		ULONG ulReadPartSize = fread(pDestBytes, ulSize, 1, pDiskFileData->pFileHandle);
+		ULONG ulReadPartSize = fread(pDestBytes, 1, ulSize, pDiskFileData->pFileHandle);
 		pDestBytes += ulReadPartSize;
 		ulReadCount += ulReadPartSize;
 		ulSize -= ulReadPartSize;
@@ -123,7 +123,7 @@ DISKFILE_PRIVATE ULONG diskFileRead(void *pData, void *pDest, ULONG ulSize) {
 			}
 
 			pDiskFileData->uwBufferFill = fread(
-				pDiskFileData->pBuffer, DISK_FILE_BUFFER_SIZE, 1,
+				pDiskFileData->pBuffer, 1, DISK_FILE_BUFFER_SIZE,
 				pDiskFileData->pFileHandle
 			);
 
@@ -167,15 +167,15 @@ DISKFILE_PRIVATE ULONG diskFileWrite(void *pData, const void *pSrc, ULONG ulSize
 		}
 
 		// NOTE: Don't take previously buffered data into account in return value.
-		// TODO: Make sure that all was written here?
+		// TODO: Make sure that all was written to disk?
 		fwrite(
 			pDiskFileData->pBuffer, pDiskFileData->uwBufferFill, 1,
 			pDiskFileData->pFileHandle
 		);
 		pDiskFileData->uwBufferFill = 0;
 
-		// Only allow small read here so that big write will go to the file directly
-		if(ulSize < 100) {
+		// Only allow small write here so that big write will go to the file directly
+		if(ulSize < DISK_FILE_BUFFER_SIZE) {
 			memcpy(&pDiskFileData->pBuffer[pDiskFileData->uwBufferFill], pSrc, ulSize);
 			pDiskFileData->uwBufferFill = ulSize;
 			ulWritten = ulSize;
@@ -371,9 +371,11 @@ UBYTE diskFileDelete(const char *szFilePath) {
 	return isSuccess;
 }
 
+#if !(__libnix__ && __KICK13__)
 UBYTE diskFileMove(const char *szSource, const char *szDest) {
 	fileAccessEnable();
 	UBYTE isSuccess = rename(szSource, szDest);
 	fileAccessDisable();
 	return isSuccess;
 }
+#endif

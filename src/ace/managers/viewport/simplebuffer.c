@@ -6,7 +6,7 @@
 #include <proto/exec.h>
 #include <ace/utils/tag.h>
 #include <ace/utils/extview.h>
-#include <ace/generic/screen.h> // Has the look up table for the COPPER_X_WAIT values.
+#include <ace/utils/fetchmode.h>
 #ifdef AMIGA
 
 
@@ -35,47 +35,30 @@ static void updateBitplanePtrs(
 static void simpleBufferInitializeCopperList(
 	tSimpleBufferManager *pManager, UBYTE isScrollX
 ) {
+	const tVPort *pVPort = pManager->sCommon.pVPort;
 	pManager->uBfrBounds.uwX = bitmapGetByteWidth(pManager->pFront) << 3;
 	pManager->uBfrBounds.uwY = pManager->pFront->Rows;
-	UWORD uwModulo = pManager->pFront->BytesPerRow - (pManager->sCommon.pVPort->uwWidth >> 3);
+	UWORD uwModulo = pManager->pFront->BytesPerRow - (pVPort->uwWidth >> 3);
 
-	// http://amigadev.elowar.com/read/ADCD_2.1/Hardware_Manual_guide/node0085.html
-	UWORD uwDDfStrt = (pManager->sCommon.pVPort->pView->ubPosX + 15) / 2 - 16;
-	UWORD uwDDfStop = uwDDfStrt + ((pManager->sCommon.pVPort->pView->uwWidth / 16) - 1) * 8;
-	if(pManager->sCommon.pVPort->eFlags & VP_FLAG_HIRES) {
-		uwDDfStrt += 4;
-		uwDDfStop += 4;
-	}
+	UWORD uwDDfStrt = fetchModeGetDDfStrt(pVPort);
+	UWORD uwDDfStop = fetchModeGetDDfStop(pVPort);
 
 	if(
-		!isScrollX || pManager->uBfrBounds.uwX <= pManager->sCommon.pVPort->uwWidth
+		!isScrollX || pManager->uBfrBounds.uwX <= pVPort->uwWidth
 	) {
 		pManager->ubFlags &= ~SIMPLEBUFFER_FLAG_X_SCROLLABLE;
 	}
 	else {
 		pManager->ubFlags |= SIMPLEBUFFER_FLAG_X_SCROLLABLE;
-		if(pManager->sCommon.pVPort->eFlags & VP_FLAG_HIRES) {
-			uwDDfStrt -= 8; // two more hires 4-part bitplane fetch pattern: 3120
-			uwModulo -= 4;
-		}
-		else {
-			uwDDfStrt -= 8; // one more lores 8-part bitplane fetch pattern: x351x240
-			uwModulo -= 2;
-		}
+		fetchModeApplyXScrollCopper(pVPort, &uwDDfStrt, &uwModulo);
 	}
 	logWrite("DDFSTRT: %04X, DDFSTOP: %04X, Modulo: %u\n", uwDDfStrt, uwDDfStop, uwModulo);
 
 	// if X scroll is enabled then it needs to start one word early
-	ULONG ulBplOffs = 0;
+	LONG lBplOffs = 0;
 	if(pManager->ubFlags & SIMPLEBUFFER_FLAG_X_SCROLLABLE) {
-		if(pManager->sCommon.pVPort->eFlags & VP_FLAG_HIRES) {
-			ulBplOffs = -4;
-		}
-		else {
-			ulBplOffs = -2;
-		}
+		lBplOffs = fetchModeGetInitialBplOffset(pVPort);
 	}
-
 	// Update (rewrite) copperlist
 	// TODO this could be unified with copBlock being set with copSetMove too
 	tCopList *pCopList = pManager->sCommon.pVPort->pView->pCopList;
@@ -88,7 +71,7 @@ static void simpleBufferInitializeCopperList(
 			"Setting copperlist %p at offs %u\n",
 			pCopList->pBackBfr, pManager->uwCopperOffset
 		);
-		copSetWait(&pCmdList[0].sWait, s_pCopperWaitXByBitplanes[pManager->sCommon.pVPort->ubBpp], (
+		copSetWait(&pCmdList[0].sWait, fetchModeGetCopWaitX(pManager->sCommon.pVPort), (
 			pManager->sCommon.pVPort->uwOffsY +
 			pManager->sCommon.pVPort->pView->ubPosY -1
 		));
@@ -104,11 +87,11 @@ static void simpleBufferInitializeCopperList(
 		}
 
 		// Proper back buffer pointers
-		setBitplanePtrs(&pCmdList[6], pManager->pFront, ulBplOffs);
+		setBitplanePtrs(&pCmdList[6], pManager->pFront, lBplOffs);
 
 		// Proper front buffer pointers
 		pCmdList = &pCopList->pFrontBfr->pList[pManager->uwCopperOffset];
-		setBitplanePtrs(&pCmdList[6], pManager->pBack, ulBplOffs);
+		setBitplanePtrs(&pCmdList[6], pManager->pBack, lBplOffs);
 	}
 	else {
 		tCopBlock *pBlock = pManager->pCopBlock;
@@ -119,11 +102,49 @@ static void simpleBufferInitializeCopperList(
 		copMove(pCopList, pBlock, &g_pCustom->bpl2mod, uwModulo);
 		copMove(pCopList, pBlock, &g_pCustom->bplcon1, 0); // Shift: 0
 		for (UBYTE i = 0; i < pManager->sCommon.pVPort->ubBpp; ++i) {
-			ULONG ulPlaneAddr = (ULONG)pManager->pBack->Planes[i] + ulBplOffs;
+			ULONG ulPlaneAddr = (ULONG)pManager->pBack->Planes[i] + lBplOffs;
 			copMove(pCopList, pBlock, &g_pBplFetch[i].uwHi, ulPlaneAddr >> 16);
 			copMove(pCopList, pBlock, &g_pBplFetch[i].uwLo, ulPlaneAddr & 0xFFFF);
 		}
 	}
+}
+
+static void simpleBufferDestroyOwnedBitmaps(tSimpleBufferManager *pManager) {
+	if(pManager->ubFlags & SIMPLEBUFFER_FLAG_OWN_FRONT) {
+		if(pManager->pFront) {
+			bitmapDestroy(pManager->pFront);
+		}
+		pManager->ubFlags &= ~SIMPLEBUFFER_FLAG_OWN_FRONT;
+	}
+	if(
+		(pManager->ubFlags & SIMPLEBUFFER_FLAG_OWN_BACK) &&
+		pManager->pBack && pManager->pBack != pManager->pFront
+	) {
+		bitmapDestroy(pManager->pBack);
+	}
+	pManager->ubFlags &= ~SIMPLEBUFFER_FLAG_OWN_BACK;
+}
+
+static void simpleBufferSetBack(tSimpleBufferManager *pManager, tBitMap *pBack);
+static void simpleBufferSetFront(tSimpleBufferManager *pManager, tBitMap *pFront);
+
+void simpleBufferSetBitmap(tSimpleBufferManager *pManager, tBitMap *pBitMap) {
+	logBlockBegin(
+		"simpleBufferSetBitmap(pManager: %p, pBitMap: %p)",
+		pManager, pBitMap
+	);
+#if defined(ACE_DEBUG)
+	if(!pBitMap) {
+		logWrite("ERR: pBitMap is 0\n");
+		logBlockEnd("simpleBufferSetBitmap()");
+		return;
+	}
+#endif
+	simpleBufferDestroyOwnedBitmaps(pManager);
+	simpleBufferSetFront(pManager, pBitMap);
+	simpleBufferSetBack(pManager, pBitMap);
+	simpleBufferInitializeCopperList(pManager, 1);
+	logBlockEnd("simpleBufferSetBitmap()");
 }
 
 static void simpleBufferSetBack(tSimpleBufferManager *pManager, tBitMap *pBack) {
@@ -140,13 +161,14 @@ static UWORD simpleBufferCalcBplOffsAndShift(tSimpleBufferManager *pManager, ULO
 	// Calculate X movement: bitplane shift, starting word to fetch
 	UWORD uwShift;
 	if(pManager->ubFlags & SIMPLEBUFFER_FLAG_X_SCROLLABLE) {
-		uwShift = (16 - (pManager->pCamera->uPos.uwX & 0xF)) & 0xF; // Bitplane shift - single
-		*pBplOffs = ((pManager->pCamera->uPos.uwX - 1) >> 4) << 1;  // Must be ULONG!
-		if(pManager->sCommon.pVPort->eFlags & VP_FLAG_HIRES) {
-			uwShift >>= 1; // Usable scroll values are 0..7, shifts 2 pixels per value
-			*pBplOffs -= 2; // Fetch 4 bytes (2 words) in scrolling instead of 2 (4)
-		}
-		uwShift = (uwShift << 4) | uwShift; // Convert to bplcon format - PF1 | PF2
+		uwShift = fetchModeCalcBplShift(
+			pManager->sCommon.pVPort, pManager->pCamera->uPos.uwX,
+			cameraGetFineX(pManager->pCamera)
+		);
+		*pBplOffs = fetchModeCalcBplOffsetX(
+			pManager->sCommon.pVPort, pManager->pCamera->uPos.uwX,
+			cameraGetFineX(pManager->pCamera)
+		);
 	}
 	else {
 		uwShift = 0;
@@ -158,7 +180,7 @@ static UWORD simpleBufferCalcBplOffsAndShift(tSimpleBufferManager *pManager, ULO
 	return uwShift;
 }
 
-void simpleBufferSetFront(tSimpleBufferManager *pManager, tBitMap *pFront) {
+static void simpleBufferSetFront(tSimpleBufferManager *pManager, tBitMap *pFront) {
 	logBlockBegin(
 		"simpleBufferSetFront(pManager: %p, pFront: %p)",
 		pManager, pFront
@@ -211,16 +233,26 @@ tSimpleBufferManager *simpleBufferCreate(void *pTags, ...) {
 		pTags, vaTags, TAG_SIMPLEBUFFER_BITMAP_FLAGS, BMF_CLEAR
 	);
 	logWrite("Bounds: %ux%u\n", uwBoundWidth, uwBoundHeight);
-	pFront = bitmapCreate(
-		uwBoundWidth, uwBoundHeight, pVPort->ubBpp, ubBitmapFlags
-	);
-	if(!pFront) {
-		logWrite("ERR: Can't alloc buffer bitmap\n");
-		goto fail;
+	pFront = (tBitMap*)tagGet(pTags, vaTags, TAG_SIMPLEBUFFER_FRONT_BITMAP, 0);
+	if(pFront) {
+		pBack = (tBitMap*)tagGet(pTags, vaTags, TAG_SIMPLEBUFFER_BACK_BITMAP, 0);
+		if(!pBack) {
+			pBack = pFront;
+		}
+	}
+	else {
+		pFront = bitmapCreate(
+			uwBoundWidth, uwBoundHeight, pVPort->ubBpp, ubBitmapFlags
+		);
+		if(!pFront) {
+			logWrite("ERR: Can't alloc buffer bitmap\n");
+			goto fail;
+		}
+		pManager->ubFlags |= SIMPLEBUFFER_FLAG_OWN_FRONT;
 	}
 
 	UBYTE isDblBfr = tagGet(pTags, vaTags, TAG_SIMPLEBUFFER_IS_DBLBUF, 0);
-	if(isDblBfr) {
+	if(isDblBfr && (!pBack || pBack == pFront)) {
 		pBack = bitmapCreate(
 			uwBoundWidth, uwBoundHeight, pVPort->ubBpp, ubBitmapFlags
 		);
@@ -228,6 +260,10 @@ tSimpleBufferManager *simpleBufferCreate(void *pTags, ...) {
 			logWrite("ERR: Can't alloc buffer bitmap\n");
 			goto fail;
 		}
+		pManager->ubFlags |= SIMPLEBUFFER_FLAG_OWN_BACK;
+	}
+	else if(isDblBfr && pBack != pFront) {
+		/* Caller supplied distinct back bitmap — not manager-owned. */
 	}
 
 	// Find camera manager, create if not exists
@@ -247,7 +283,7 @@ tSimpleBufferManager *simpleBufferCreate(void *pTags, ...) {
 			pCopList, simpleBufferGetRawCopperlistInstructionCount(pVPort->ubBpp) - 1,
 			// Vertically addition from DiWStrt, horizontally just so that 6bpp can be set up.
 			// First to set are ddf, modulos & shift so they are changed during fetch.
-			s_pCopperWaitXByBitplanes[pVPort->ubBpp],
+			fetchModeGetCopWaitX(pVPort),
 			 pVPort->uwOffsY + pVPort->pView->ubPosY - 1
 		);
 	}
@@ -278,10 +314,13 @@ tSimpleBufferManager *simpleBufferCreate(void *pTags, ...) {
 	return pManager;
 
 fail:
-	if(pBack && pBack != pFront) {
+	if(
+		(pManager->ubFlags & SIMPLEBUFFER_FLAG_OWN_BACK) &&
+		pBack && pBack != pFront
+	) {
 		bitmapDestroy(pBack);
 	}
-	if(pFront) {
+	if((pManager->ubFlags & SIMPLEBUFFER_FLAG_OWN_FRONT) && pFront) {
 		bitmapDestroy(pFront);
 	}
 	if(pManager) {
@@ -302,10 +341,7 @@ void simpleBufferDestroy(tSimpleBufferManager *pManager) {
 			pManager->sCommon.pVPort->pView->pCopList, pManager->pCopBlock
 		);
 	}
-	if(pManager->pBack != pManager->pFront) {
-		bitmapDestroy(pManager->pBack);
-	}
-	bitmapDestroy(pManager->pFront);
+	simpleBufferDestroyOwnedBitmaps(pManager);
 	memFree(pManager, sizeof(tSimpleBufferManager));
 	logBlockEnd("simpleBufferDestroy()");
 }
